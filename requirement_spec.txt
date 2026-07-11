@@ -1,0 +1,472 @@
+IndiaPix
+ 
+INDIAPIX
+Video & Image Metadata Automation System
+Technical Brief for In-House Developer
+June 2026  |  Powered by Claude AI (Anthropic)
+ 
+ 
+1. Project Overview
+ 
+IndiaPix requires an automated system to generate professional stock metadata — title, caption, description, and keywords — for both video clips and still images, for upload to stock platforms including Getty Images, Adobe Stock, Shutterstock, and Pond5.
+ 
+This system will replace the current manual keywording process, dramatically reducing turnaround time while improving consistency and quality of metadata output across the team.
+ 
+Objective: Build a desktop or web application that accepts video and image files, automatically extracts key frames, sends them to the Claude AI API, and returns ready-to-export metadata in CSV format — compatible with stock platform bulk upload tools.
+ 
+Detail	Information
+Project Name	IndiaPix Metadata Automation System
+Client	IndiaPix Visual Media Pvt. Ltd., New Delhi
+AI Engine	Claude Sonnet 4.6 (Anthropic API)
+Primary Users	Sneha, Anushka and the metadata team
+Target Platforms	Getty Images, Adobe Stock, Shutterstock, Pond5
+Output Format	CSV — compatible with stock platform bulk upload
+Priority	High — immediate operational requirement
+ 
+ 
+2. Problem Statement
+ 
+The current manual metadata workflow at IndiaPix is:
+ 
+• Time consuming — each file takes 10-20 minutes to keyword manually
+• Inconsistent — output quality varies between team members
+• Not scalable — unable to handle large volume batch processing
+• Bottlenecked — dependent on individual availability and skill level
+ 
+The proposed automation tool targets 2-3 minutes per file with consistent, high-quality, stock-platform-optimised output.
+ 
+ 
+3. Video Length & Frame Extraction Rules
+ 
+One of the most important design decisions is how many frames to extract from each video. There is no restriction on video length — the system must handle videos of any duration. What varies is the number of frames extracted based on length.
+ 
+3.1 Video Length — No Restrictions
+There is NO maximum video length limit. The system must support videos from 10 seconds to 60+ minutes. Since only frames (screenshots) are sent to Claude — not the video file itself — length is irrelevant to API processing.
+ 
+3.2 Frame Extraction Rules by Duration
+The number of frames extracted must scale intelligently with video length to ensure accurate metadata generation:
+ 
+Video Duration	Frames to Extract	Extraction Points	Notes
+Under 30 seconds	3 frames	10%, 50%, 90%	Short clips — cover start, mid, end
+30 sec — 2 minutes	5 frames	10%, 30%, 50%, 70%, 90%	Standard — recommended default
+2 — 5 minutes	7 frames	Even distribution	Longer content needs more coverage
+5 — 15 minutes	10 frames	Every ~90 seconds	Capture all major scenes
+15 — 30 minutes	12 frames	Even distribution	Documentary / long form
+Over 30 minutes	15 frames	Every ~2 minutes	Maximum — API limit is 20 images
+ 
+Hard limit: Never send more than 20 images in a single Claude API request. Claude's maximum per request is 20 images. Always stay within this limit.
+ 
+3.3 Frame Extraction Implementation — FFmpeg
+Use FFmpeg for all frame extraction. It is free, industry standard, and handles all major video formats including MP4, MOV, AVI, and MXF.
+ 
+# Install FFmpeg
+# Windows: Download from https://ffmpeg.org/download.html
+# macOS:   brew install ffmpeg
+# Linux:   sudo apt install ffmpeg
+ 
+# Get video duration first
+ffprobe -v error -show_entries format=duration \
+ -of default=noprint_wrappers=1:nokey=1 input.mp4
+ 
+# Extract frames at percentage intervals (recommended approach)
+# This Python logic determines how many frames based on duration:
+ 
+def get_frame_count(duration_seconds):
+   if duration_seconds < 30:   return 3
+   elif duration_seconds < 120:  return 5
+   elif duration_seconds < 300:  return 7
+   elif duration_seconds < 900:  return 10
+   elif duration_seconds < 1800: return 12
+   else:                         return 15
+ 
+# Extract frames at calculated percentage points
+def extract_frames(video_path, num_frames):
+   import subprocess, os
+   percentages = [i / (num_frames - 1) for i in range(num_frames)]
+   # Get duration
+   result = subprocess.run([
+       'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+       '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+   ], capture_output=True, text=True)
+   duration = float(result.stdout.strip())
+   frames = []
+   for i, pct in enumerate(percentages):
+       timestamp = duration * pct
+       output = f'/tmp/frame_{i:02d}.jpg'
+       subprocess.run([
+           'ffmpeg', '-ss', str(timestamp), '-i', video_path,
+           '-vframes', '1', '-q:v', '2', output, '-y'
+       ], capture_output=True)
+       frames.append(output)
+   return frames
+ 
+3.4 Scene Change Detection (Advanced — Phase 2)
+For Phase 2, implement automatic scene change detection so that frames are extracted at meaningful visual transitions rather than fixed time intervals:
+ 
+# Detect scene changes using FFmpeg scene filter
+ffmpeg -i input.mp4 \
+ -filter:v 'select=gt(scene\,0.3),showinfo' \
+ -vsync vfr scene_frame_%03d.jpg
+ 
+# 0.3 = sensitivity threshold (0.1 = very sensitive, 0.5 = less sensitive)
+# Adjust based on content type — fast action needs lower threshold
+ 
+ 
+4. Metadata Captioning Rules & Standards
+ 
+These rules must be hardcoded into the Claude API prompt so that every output automatically follows stock platform best practices. The team should not need to remember these rules — the system enforces them automatically.
+ 
+4.1 Title Rules
+Formula: Subject + Action + Location (under 70 characters)
+ 
+• Maximum 70 characters — Getty Images hard limit
+• Always use Title Case — capitalise every major word
+• Include WHO is in the shot (Indian woman, school students, farmer)
+• Include WHAT they are doing (conducting experiment, harvesting wheat)
+• Include WHERE if identifiable (New Delhi, Mumbai, Rajasthan, India)
+• Never start with 'A' or 'The' — wastes precious characters
+• Never use punctuation marks in title
+ 
+❌ Wrong Title	✅ Correct Title	Why
+People in a room	Indian Students Conducting Chemistry Experiment in School Lab	Specific, descriptive, location included
+A woman walking	Young Indian Businesswoman Walking Through Mumbai Street Market	Gender, nationality, action, location
+Farming	Indian Farmer Harvesting Wheat Crop in Punjab Agricultural Field	Subject, action, location all present
+The Taj Mahal	Aerial View of Taj Mahal at Sunrise Agra India	Shot type, landmark, time of day, location
+ 
+4.2 Caption Rules
+Formula: One clear sentence — describe what is HAPPENING, not what it LOOKS LIKE
+ 
+• One sentence only — maximum 200 characters
+• Use present continuous tense — 'Students are conducting...' not 'Students conduct...'
+• Describe the action and interaction — not the visual appearance
+• Always mention India or Indian where culturally relevant
+• Do not repeat the title word for word — add new information
+• Do not include technical camera details in caption
+ 
+✅  DO	❌  DON'T
+Three Indian middle school students are collaborating during a chemistry practical session	Three students in school uniforms stand near test tubes in a laboratory
+A young Indian woman in traditional attire is performing classical Bharatanatyam dance	Beautiful woman dancing gracefully in colourful outfit
+Farmers are harvesting wheat using traditional methods in a rural Punjab field at dawn	Man working in a field with golden light
+ 
+4.3 Description Rules
+Formula: 3 sentences — Sentence 1: Who & What | Sentence 2: Where & Setting | Sentence 3: Mood & Cultural Context
+ 
+• 2-3 sentences maximum — 300-500 characters ideal
+• Sentence 1 — Describe the primary subject, number of people, and main action
+• Sentence 2 — Describe the setting, environment, architecture, or location details
+• Sentence 3 — Describe the mood, atmosphere, cultural significance, or contextual meaning
+• Always include India-specific cultural context where relevant
+• Mention visible props, equipment, clothing, or environmental details
+• Avoid subjective adjectives like 'beautiful', 'amazing', 'stunning'
+ 
+Example Description: Sentence 1: Three Indian middle school students in grey school blazers are engaged in an animated discussion during a chemistry practical session, with one student holding up a test tube for examination. Sentence 2: The well-lit school laboratory features stone-topped benches with beakers, Erlenmeyer flasks, and test tube racks visible in the foreground, with barred windows typical of Indian school infrastructure. Sentence 3: The image captures the spirit of STEM education in modern India, depicting collaborative and hands-on learning in an urban school environment.
+ 
+4.4 Keyword Rules
+Target: 45-50 keywords per file. Organised across 6 mandatory categories.
+ 
+The system must automatically generate keywords across ALL six of the following categories for every file:
+ 
+Category	Examples	Min Count	Priority
+People & Demographics	Indian woman, school student, middle-aged man, girl, teenager	5-8	Critical
+Action & Activity	conducting experiment, harvesting, dancing, walking, cooking	5-8	Critical
+Location & Geography	India, New Delhi, Mumbai, Punjab, Rajasthan, South India	5-8	Critical
+Setting & Environment	school laboratory, street market, agricultural field, temple	5-7	High
+Technical & Shot Type	wide shot, close up, aerial, tracking shot, natural light	3-5	Medium
+Conceptual & Thematic	education, teamwork, culture, tradition, modernisation, STEM	8-12	High
+ 
+• Always include both singular and plural forms — 'student' AND 'students'
+• Always include India AND Indian AND the specific region/state
+• Include both specific and general terms — 'Bharatanatyam' AND 'classical dance' AND 'dance'
+• Include season or time of day if visible — 'sunrise', 'monsoon', 'winter'
+• Include technical equipment if visible — 'test tube', 'tractor', 'sari', 'dhow'
+• Never repeat the same keyword twice — even in different forms
+• Never use trademarked brand names as keywords
+ 
+4.5 Editorial vs Commercial Flag
+The system must automatically determine and flag whether content is Editorial or Commercial:
+ 
+Type	When to Flag as Editorial
+Editorial = TRUE	Visible brand logos, signboards, trademarks, real people identifiable faces without model release, news events, government buildings with signage, religious ceremonies
+Commercial = FALSE (default)	Generic scenes, unidentifiable people, nature, landscapes, studio shoots with model releases, abstract content
+Rule	When in doubt — flag as Editorial. It is safer for the client and the platform.
+ 
+ 
+5. The Master Metadata Prompt
+ 
+This is the exact prompt structure to send to Claude API. All rules from Section 4 are embedded in this prompt so the AI enforces them automatically. This prompt should be stored as a configurable template in the application.
+ 
+MASTER_PROMPT = '''
+You are a professional stock footage metadata specialist for IndiaPix,
+India's leading visual media company established in 1993.
+ 
+Analyse the provided video frames carefully.
+Additional context from operator: {description}
+ 
+Generate metadata strictly following these rules:
+ 
+TITLE RULES:
+- Maximum 70 characters
+- Format: Subject + Action + Location
+- Use Title Case
+- Include who, what, where
+- Never start with 'A' or 'The'
+ 
+CAPTION RULES:
+- One sentence, present continuous tense
+- Describe what is HAPPENING not what it looks like
+- Include India/Indian context where relevant
+- Maximum 200 characters
+ 
+DESCRIPTION RULES:
+- 3 sentences only
+- Sentence 1: Who + What (subjects and action)
+- Sentence 2: Where + Setting (environment details)
+- Sentence 3: Mood + Cultural context
+- Include India-specific cultural references
+ 
+KEYWORD RULES:
+- Generate exactly 50 keywords
+- Must include all 6 categories:
+ 1. People & Demographics (5-8 keywords)
+ 2. Action & Activity (5-8 keywords)
+ 3. Location & Geography — always include India (5-8 keywords)
+ 4. Setting & Environment (5-7 keywords)
+ 5. Technical & Shot Type (3-5 keywords)
+ 6. Conceptual & Thematic (8-12 keywords)
+- Include singular AND plural forms
+- No duplicate keywords
+- No trademarked brand names
+ 
+Return ONLY valid JSON, no explanation, no markdown:
+{
+ 'title': 'string under 70 chars',
+ 'caption': 'one sentence under 200 chars',
+ 'description': 'three sentences',
+ 'keywords': ['exactly 50 keywords'],
+ 'category': 'primary stock category',
+ 'location': 'City, State, India if identifiable else Unknown',
+ 'mood': 'atmosphere in 3-5 words',
+ 'shotType': 'wide/medium/close/aerial/tracking/handheld',
+ 'editorial': true or false,
+ 'keywordCategories': {
+   'people': ['list'],
+   'action': ['list'],
+   'location': ['list'],
+   'setting': ['list'],
+   'technical': ['list'],
+   'conceptual': ['list']
+ }
+}
+'''
+ 
+Note: The keywordCategories field helps the UI display keywords organised by category, allowing the team to easily review and edit specific groups before export.
+ 
+ 
+6. Claude API Technical Integration
+ 
+6.1 API Configuration
+Parameter	Value
+API Provider	Anthropic (anthropic.com)
+Model	claude-sonnet-4-6
+Python SDK	pip install anthropic
+Node.js SDK	npm install @anthropic-ai/sdk
+Max images per request	20 images (hard limit)
+Recommended output tokens	1500 tokens
+Image format	JPEG recommended — smaller file size
+Image resize before send	Resize to max 1024px wide — reduces API cost
+API key storage	Environment variable — never hardcode in source
+ 
+6.2 Complete Python Integration Example
+import anthropic, base64, json, subprocess, os
+from pathlib import Path
+ 
+client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+ 
+def encode_image(image_path):
+   with open(image_path, 'rb') as f:
+       return base64.standard_b64encode(f.read()).decode('utf-8')
+ 
+def resize_frame(input_path, output_path, max_width=1024):
+   subprocess.run([
+       'ffmpeg', '-i', input_path,
+       '-vf', f'scale={max_width}:-1',
+       output_path, '-y'
+   ], capture_output=True)
+ 
+def generate_metadata(frame_paths, description=''):
+   content = []
+   
+   for frame in frame_paths:
+       resized = frame.replace('.jpg', '_resized.jpg')
+       resize_frame(frame, resized)
+       content.append({
+           'type': 'image',
+           'source': {
+               'type': 'base64',
+               'media_type': 'image/jpeg',
+               'data': encode_image(resized)
+           }
+       })
+   
+   prompt = MASTER_PROMPT.format(description=description or 'None provided')
+   content.append({'type': 'text', 'text': prompt})
+   
+   response = client.messages.create(
+       model='claude-sonnet-4-6',
+       max_tokens=1500,
+       messages=[{'role': 'user', 'content': content}]
+   )
+   
+   raw = response.content[0].text
+   clean = raw.replace('```json', '').replace('```', '').strip()
+   return json.loads(clean)
+ 
+def process_video(video_path, description=''):
+   # 1. Get duration
+   result = subprocess.run([
+       'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+       '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+   ], capture_output=True, text=True)
+   duration = float(result.stdout.strip())
+   
+   # 2. Calculate frame count
+   num_frames = get_frame_count(duration)
+   
+   # 3. Extract frames
+   frames = extract_frames(video_path, num_frames)
+   
+   # 4. Generate metadata
+   metadata = generate_metadata(frames, description)
+   
+   # 5. Clean up temp frames
+   for f in frames: os.remove(f)
+   
+   return metadata
+ 
+ 
+7. Application Features & UI Requirements
+ 
+Phase 1 — Core MVP (Weeks 1-2)
+Build and deliver this first. Ensure it is fully tested before moving to Phase 2.
+ 
+1. Video file upload — drag and drop or browse (MP4, MOV, AVI, MXF, M4V)
+2. Auto detection of video duration on upload
+3. Auto calculation of frame count based on duration rules in Section 3
+4. FFmpeg frame extraction in background — show progress indicator
+5. Optional description text field — for operator to add context
+6. Send to Claude API — frames + description + master prompt
+7. Display loading state — estimated wait time 10-30 seconds
+8. Display results — title, caption, description, keywords by category
+9. Inline editing — all fields must be editable before export
+10. Character counter on title (max 70) and caption (max 200)
+11. Export single file metadata as CSV
+12. Clear / Reset button to process next file
+ 
+Phase 2 — Image Support & Batch Processing (Week 3)
+13. Still image upload — JPG, PNG, TIFF, RAW (CR2, NEF, ARW)
+14. Single image metadata generation using same Claude API
+15. Batch upload — select multiple files (videos and images mixed)
+16. Queue display — show all files pending processing
+17. Progress bar — X of Y files completed
+18. Batch CSV export — all files in one export file
+19. Error handling — flag failed files, allow retry
+ 
+Phase 3 — Advanced Features (Weeks 4-6)
+20. Job history database — SQLite — store all processed files
+21. Search past jobs — by filename, date, or keyword
+22. Re-export past jobs — without reprocessing via API
+23. Custom keyword list — IndiaPix standard terms auto-appended to every job
+24. Platform export presets — Getty format vs Adobe Stock format vs Shutterstock
+25. Analytics — files processed per day, week, month
+26. Settings panel — API key management, default description, frame count override
+ 
+ 
+8. CSV Output Format
+ 
+The CSV export must match Getty Images and Adobe Stock bulk upload specifications exactly:
+ 
+Column	Max Length	Required	Source
+filename	—	Yes	Auto from uploaded file name
+title	70 chars	Yes	Claude generated
+caption	200 chars	Yes	Claude generated
+description	500 chars	Yes	Claude generated
+keywords	50 tags	Yes	Claude — comma separated
+category	—	Yes	Claude suggested
+editorial	Yes / No	Yes	Claude determined
+location	—	Optional	Claude detected
+shot_type	—	Optional	Claude detected
+mood	—	Optional	Claude detected
+ 
+# Sample CSV output row:
+filename,title,caption,description,keywords,category,editorial,location
+IMG_001.mp4,
+"Indian Students Conducting Chemistry Experiment in School Lab",
+"Three students are collaborating during a chemistry practical session",
+"Three Indian middle school students in grey blazers engage in a chemistry experiment...",
+"students,chemistry,India,school laboratory,STEM,education,teamwork,...",
+Education,No,"New Delhi, India"
+ 
+ 
+9. System Architecture Overview
+ 
+┌─────────────────────────────────────────────────────┐
+│                  IndiaPix Metadata Tool             │
+│                                                     │
+│  ┌──────────┐    ┌──────────┐    ┌──────────────┐  │
+│  │  Upload  │───▶│  FFmpeg  │───▶│  Claude API  │  │
+│  │  Video/  │    │  Frame   │    │  (Anthropic) │  │
+│  │  Image   │    │ Extract  │    │              │  │
+│  └──────────┘    └──────────┘    └──────┬───────┘  │
+│                                         │          │
+│  ┌──────────┐    ┌──────────┐    ┌──────▼───────┐  │
+│  │  Export  │◀───│  Edit &  │◀───│   Display    │  │
+│  │   CSV    │    │  Review  │    │   Results    │  │
+│  └──────────┘    └──────────┘    └──────────────┘  │
+│                                                     │
+│  ┌─────────────────────────────────────────────┐   │
+│  │         SQLite Job History Database          │   │
+│  └─────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────┘
+ 
+ 
+10. Recommended Technical Stack
+ 
+Component	Recommended Options
+Primary Language	Python 3.10+ (preferred) or Node.js 18+
+UI Framework	Tkinter or PyQt6 (desktop) / Flask or FastAPI (web)
+Frame Extraction	FFmpeg — free, open source, industry standard
+AI API	Anthropic Python SDK — pip install anthropic
+Image Processing	Pillow — pip install Pillow (resize before API send)
+Database	SQLite via Python sqlite3 (Phase 3)
+CSV Export	Python csv module or pandas
+Video Formats	MP4, MOV, AVI, MXF, M4V, WMV
+Image Formats	JPG, PNG, TIFF, CR2, NEF, ARW (Phase 2)
+Deployment	Local desktop installer OR internal web server
+ 
+ 
+11. Deliverables
+ 
+• Phase 1 working application — desktop or web
+• Full source code with clear comments throughout
+• Setup and installation guide (step by step)
+• User manual for Sneha and team — simple language with screenshots
+• API key configuration and environment setup guide
+• Short demo video — screen recording showing complete workflow
+• 30-day bug fix support post delivery
+• Phase 2 and Phase 3 delivery as per agreed timeline
+ 
+ 
+12. Contact & Questions
+ 
+For technical questions or clarifications regarding this brief:
+ 
+• Hemant Mehta — hemant@indiapicture.in
+• Anushka — day-to-day coordination and testing coordination
+• Sneha — end user testing and feedback
+ 
+A kickoff call can be arranged before development begins to clarify any requirements.
+ 
+ 
+IndiaPix Visual Media Pvt. Ltd.  |  New Delhi, India  |  Est. 1993
+This document is confidential and intended for internal use only.
+IndiaPix Visual Media Pvt. Ltd.  |  New Delhi  |  Page
