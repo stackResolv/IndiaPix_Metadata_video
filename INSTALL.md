@@ -9,99 +9,116 @@
 | **FFmpeg** | Latest stable | See below |
 | **Anthropic API Key** | — | [console.anthropic.com](https://console.anthropic.com) |
 
-## 1. Install FFmpeg
+## 1. Install FFmpeg (Windows)
 
-FFmpeg is required for extracting frames from video files.
+1. Download FFmpeg from: https://ffmpeg.org/download.html
+2. Choose **"Windows builds from gyan.dev"** → **"ffmpeg-release-full.7z"**
+3. Extract the downloaded `.7z` file to `C:\ffmpeg` (you can use [7-Zip](https://7-zip.org/) to extract it)
+4. Add FFmpeg to your system PATH:
+   - Press `Win + R`, type `sysdm.cpl`, press Enter
+   - Go to the **Advanced** tab → **Environment Variables**
+   - Under "System variables", find and select `Path`, click **Edit**
+   - Click **New** and add `C:\ffmpeg\bin`
+   - Click OK on all windows
+5. **Restart your terminal** (or log out and back in)
+6. Verify FFmpeg is installed:
+   ```powershell
+   ffmpeg -version
+   ffprobe -version
+   ```
+   Both commands should print version information without errors.
 
-### macOS (using Homebrew)
-```bash
-brew install ffmpeg
-```
+## 2. Install Python (Windows)
 
-### Windows
-1. Download from https://ffmpeg.org/download.html
-2. Choose "Windows builds from gyan.dev" → "ffmpeg-release-full.7z"
-3. Extract to `C:\ffmpeg`
-4. Add `C:\ffmpeg\bin` to your system PATH:
-   - Open System Properties → Advanced → Environment Variables
-   - Edit the `Path` variable, add `C:\ffmpeg\bin`
-   - Click OK and restart your terminal
+1. Go to https://python.org → Downloads → Download Python 3.10+
+2. Run the installer
+3. **IMPORTANT:** Check the box **"Add Python to PATH"** at the bottom of the installer
+4. Click **Install**
+5. Verify installation:
+   ```powershell
+   python --version
+   pip --version
+   ```
 
-### Linux (Ubuntu/Debian)
-```bash
-sudo apt update && sudo apt install ffmpeg
-```
+## 3. Install Node.js (Windows)
 
-**Verify installation** by running:
-```bash
-ffmpeg -version
-ffprobe -version
-```
-Both commands should print version information without errors.
+1. Go to https://nodejs.org → Download the **LTS** version (18+)
+2. Run the installer (default settings are fine)
+3. Verify installation:
+   ```powershell
+   node --version
+   npm --version
+   ```
 
-## 2. Get Your Anthropic API Key
+## 4. Get Your Anthropic API Key
 
 1. Go to https://console.anthropic.com/
 2. Sign up or log in
-3. Navigate to API Keys → Create Key
+3. Navigate to **API Keys** → **Create Key**
 4. Copy the key (starts with `sk-ant-...`)
+5. **Keep this key safe** — you'll need it in Step 5
 
-## 3. Setup & Run
+## 5. Setup & Run
 
 ### Option A: Quick Start (Recommended)
 
-**macOS / Linux:**
-Run the automated start script from the project root:
-```bash
-./start.sh
-```
+1. **Open PowerShell** in the project folder:
+   - Navigate to the project folder in File Explorer
+   - Hold `Shift` and right-click → **"Open PowerShell window here"**
+   - (Or type `powershell` in the address bar)
 
-**Windows (PowerShell):**
-Run the PowerShell start script from the project root:
+2. **Run the start script:**
+   ```powershell
+   .\start.ps1
+   ```
+
+   If you see a security error about execution policy, run this first:
+   ```powershell
+   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+   ```
+   Then run `.\start.ps1` again.
+
+3. **Add your API key:**
+   - After the first run, the script will create a file at `backend\.env`
+   - Open `backend\.env` in Notepad (right-click → Open with → Notepad)
+   - Replace the placeholder with your real Anthropic key:
+     ```
+     ANTHROPIC_API_KEY=sk-ant-your-real-key-here
+     ```
+   - Save the file
+
+4. **Restart the servers:**
+   - Press `Ctrl+C` in PowerShell to stop
+   - Run `.\start.ps1` again
+
+5. **Open the app:**
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8000
+   - API Docs: http://localhost:8000/docs
+
+### Option B: Manual Setup (Run in separate PowerShell windows)
+
+**Terminal 1 — Backend:**
 ```powershell
-.\start.ps1
-```
-
-If you see a security error, you may need to set the execution policy first:
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
-
-On the first run, this will:
-- Create a Python virtual environment
-- Install all Python dependencies
-- Install all frontend dependencies
-- Create a `.env` file from the template
-- Start both the backend and frontend servers
-
-**Important**: After the first start, open `backend/.env` and replace the placeholder API key with your real Anthropic key:
-```
-ANTHROPIC_API_KEY=sk-ant-your-real-key-here
-```
-
-Then restart the servers (Ctrl+C and run the start script again).
-
-### Option B: Manual Setup
-
-**Backend:**
-```bash
 cd backend
-python3 -m venv venv              # Create virtual environment
-source venv/bin/activate          # Activate it (Windows: venv\Scripts\activate)
-pip install -r requirements.txt   # Install dependencies
-cp .env.example .env              # Create config file
-# Edit .env and add your ANTHROPIC_API_KEY
-uvicorn main:app --reload --port 8000   # Start backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
+```
+Now open `backend\.env` in Notepad, add your Anthropic API key, save. Then:
+```powershell
+uvicorn main:app --reload --port 8000
 ```
 
-**Frontend (in a new terminal):**
-```bash
+**Terminal 2 — Frontend:**
+```powershell
 cd frontend
-npm install                       # Install dependencies
-npx next dev --port 3000          # Start frontend
+npm install
+npx next dev --port 3000
 ```
 
-## 4. Access the Application
+## 6. Access the Application
 
 | Component | URL |
 |---|---|
@@ -109,18 +126,20 @@ npx next dev --port 3000          # Start frontend
 | **Backend API** | http://localhost:8000 |
 | **API Documentation** | http://localhost:8000/docs |
 
-## 5. Troubleshooting
+## 7. Troubleshooting
 
 | Problem | Likely Cause | Solution |
 |---|---|---|
-| "FFmpeg not found" error | FFmpeg not installed or not on PATH | Install FFmpeg (see Step 1) |
-| "API key not configured" | Missing or placeholder API key | Edit `backend/.env` with real key |
+| `'python' is not recognized` | Python not in PATH | Reinstall Python and check "Add Python to PATH" |
+| `'npm' is not recognized` | Node.js not installed or not in PATH | Reinstall Node.js from nodejs.org |
+| `FFmpeg not found` error | FFmpeg not installed or not on PATH | Install FFmpeg (see Step 1) and restart terminal |
+| "API key not configured" | Missing or placeholder API key | Edit `backend\.env` with real key |
 | Upload fails with 413 | File too large | Max is 2GB; check file size |
-| "Failed to parse Claude response" | API returned unexpected format | Check API key has access to claude-sonnet-4-6-20250514 |
-| Port 8000/3000 already in use | Another application using the port | Change port in `backend/.env` or use `--port` flag |
-| Windows: `source` not found | Wrong shell command | Use `venv\Scripts\activate` instead |
+| "Execution Policy" error | PowerShell restricts running scripts | Run: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` |
+| Port 8000/3000 already in use | Another app on that port | Change port in `backend\.env` or use `--port` flag |
+| `pip` not recognized | Python not fully installed | Run: `python -m ensurepip` |
 
-## 6. Supported File Formats
+## 8. Supported File Formats
 
 **Videos:** MP4, MOV, AVI, MXF, M4V, WMV
 **Images (Phase 2):** JPG, PNG, TIFF, CR2, NEF, ARW
