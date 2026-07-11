@@ -20,6 +20,7 @@ from config import settings
 from models.metadata import MetadataResult
 from services.ffmpeg_service import (
     extract_frames,
+    extract_frames_at_scenes,
     get_video_duration,
     get_frame_count,
     get_video_properties,
@@ -27,7 +28,7 @@ from services.ffmpeg_service import (
 from services.claude_service import generate_metadata as claude_generate, ClaudeAPIError
 from services.openai_service import generate_metadata as openai_generate, OpenAIAPIError
 from services.csv_service import generate_csv_row, CSV_COLUMNS
-from services.storage_service import find_upload_file, get_original_filename
+from services.storage_service import find_upload_file, get_original_filename, clear_upload
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +232,9 @@ async def start_batch_processing(batch_id: str):
         batch.is_running = False
         batch.completed_at = time.time()
 
+    # Clean up all uploaded files associated with this batch
+    _cleanup_batch_uploads(batch)
+
     logger.info(
         f"Batch {batch_id} complete: "
         f"{batch.completed_count}/{batch.total_jobs} succeeded, "
@@ -286,12 +290,21 @@ def _process_single_job_sync(job: BatchJob):
             except Exception as e:
                 logger.warning(f"Could not extract video properties for {job.filename}: {e}")
 
-            frame_paths = extract_frames(
-                str(upload_path),
-                frame_count,
-                str(frames_dir),
-                max_width=settings.frame_max_width,
-            )
+            if settings.scene_detection_enabled:
+                frame_paths = extract_frames_at_scenes(
+                    str(upload_path),
+                    str(frames_dir),
+                    max_width=settings.frame_max_width,
+                    sensitivity=settings.scene_sensitivity,
+                    max_frames=frame_count,
+                )
+            else:
+                frame_paths = extract_frames(
+                    str(upload_path),
+                    frame_count,
+                    str(frames_dir),
+                    max_width=settings.frame_max_width,
+                )
 
             if not frame_paths:
                 raise RuntimeError("Failed to extract any frames from the video")
@@ -323,3 +336,18 @@ def _process_single_job_sync(job: BatchJob):
                 sh.rmtree(frames_dir)
         except Exception as e:
             logger.warning(f"Failed to clean up frames dir {frames_dir}: {e}")
+
+def _cleanup_batch_uploads(batch: Batch):
+    """
+    Delete all uploaded files that were associated with a batch.
+    Called automatically when the batch completes processing.
+    """
+    cleaned = 0
+    for job in batch.jobs:
+        try:
+            clear_upload(job.upload_id)
+            cleaned += 1
+        except Exception as e:
+            logger.warning(f"Failed to clean up upload {job.upload_id}: {e}")
+    if cleaned > 0:
+        logger.info(f"Cleaned up {cleaned} upload(s) for batch {batch.batch_id}")

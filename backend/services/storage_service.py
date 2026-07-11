@@ -5,8 +5,9 @@ Manages uploaded files and their original filename metadata.
 
 import json
 import logging
+import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from config import settings
 
@@ -59,3 +60,55 @@ def clear_upload(upload_id: str):
     if meta_path.exists():
         meta_path.unlink()
         logger.debug(f"Deleted upload meta: {meta_path}")
+
+def list_stale_uploads() -> List[str]:
+    """
+    List upload IDs that are older than UPLOAD_TTL_HOURS.
+    
+    Returns a list of upload_ids whose files have exceeded the TTL.
+    """
+    ttl_seconds = settings.upload_ttl_hours * 3600
+    now = time.time()
+    stale_ids = []
+
+    upload_dir = settings.upload_path
+    if not upload_dir.exists():
+        return stale_ids
+
+    seen_ids = set()
+    for f in upload_dir.iterdir():
+        if not f.is_file():
+            continue
+        if f.name.endswith(UPLOAD_META_SUFFIX):
+            continue
+
+        name_parts = f.name.rsplit(".", 1)
+        if len(name_parts) != 2:
+            continue
+        upload_id = name_parts[0]
+
+        if upload_id in seen_ids:
+            continue
+        seen_ids.add(upload_id)
+
+        file_age = now - f.stat().st_mtime
+        if file_age > ttl_seconds:
+            stale_ids.append(upload_id)
+
+    logger.info(f"Found {len(stale_ids)} stale upload(s) older than {settings.upload_ttl_hours}h")
+    return stale_ids
+
+
+def cleanup_stale_uploads() -> int:
+    """
+    Delete all upload files and their meta sidecars that are older than TTL.
+    
+    Returns:
+        Number of stale uploads cleaned up.
+    """
+    stale_ids = list_stale_uploads()
+    for upload_id in stale_ids:
+        clear_upload(upload_id)
+    if stale_ids:
+        logger.info(f"Cleaned up {len(stale_ids)} stale upload(s)")
+    return len(stale_ids)

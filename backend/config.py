@@ -55,11 +55,18 @@ class Settings(BaseSettings):
     # Results directory for batch CSVs
     results_dir: str = os.getenv("RESULTS_DIR", "./processed_results")
 
+    # Stale upload cleanup
+    upload_ttl_hours: int = int(os.getenv("UPLOAD_TTL_HOURS", "1"))
+
+    # Scene change detection (Phase 2 advanced)
+    scene_detection_enabled: bool = os.getenv("SCENE_DETECTION_ENABLED", "true").lower() == "true"
+    scene_sensitivity: float = float(os.getenv("SCENE_SENSITIVITY", "0.3"))
+
     # File validation
     max_upload_size_mb: int = 2000
     max_export_body_bytes: int = int(os.getenv("MAX_EXPORT_BODY_BYTES", "5242880"))  # 5 MB
     allowed_video_extensions: set = {".mp4", ".mov", ".avi", ".mxf", ".m4v", ".wmv"}
-    allowed_image_extensions: set = {".jpg", ".jpeg", ".png", ".tiff", ".tif"}
+    allowed_image_extensions: set = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".cr2", ".nef", ".arw"}
 
     @property
     def upload_path(self) -> Path:

@@ -12,7 +12,13 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from config import settings
-from services.ffmpeg_service import extract_frames, get_video_duration, get_frame_count, get_video_properties
+from services.ffmpeg_service import (
+    extract_frames,
+    extract_frames_at_scenes,
+    get_video_duration,
+    get_frame_count,
+    get_video_properties,
+)
 from services.claude_service import generate_metadata as claude_generate, ClaudeAPIError
 from services.openai_service import generate_metadata as openai_generate, OpenAIAPIError
 from services.csv_service import generate_csv_row, CSV_COLUMNS
@@ -104,12 +110,21 @@ async def generate_metadata_endpoint(
             frames_dir.mkdir(parents=True, exist_ok=True)
 
             try:
-                frame_paths = extract_frames(
-                    str(upload_path),
-                    frame_count,
-                    str(frames_dir),
-                    max_width=settings.frame_max_width,
-                )
+                if is_video and settings.scene_detection_enabled:
+                    frame_paths = extract_frames_at_scenes(
+                        str(upload_path),
+                        str(frames_dir),
+                        max_width=settings.frame_max_width,
+                        sensitivity=settings.scene_sensitivity,
+                        max_frames=frame_count,
+                    )
+                else:
+                    frame_paths = extract_frames(
+                        str(upload_path),
+                        frame_count,
+                        str(frames_dir),
+                        max_width=settings.frame_max_width,
+                    )
 
                 if not frame_paths:
                     raise HTTPException(

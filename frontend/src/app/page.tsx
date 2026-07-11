@@ -90,6 +90,9 @@ export default function HomePage() {
       ".png",
       ".tiff",
       ".tif",
+      ".cr2",
+      ".nef",
+      ".arw",
     ];
     const ext = "." + file.name.split(".").pop()?.toLowerCase();
     if (!validExtensions.includes(ext)) {
@@ -310,13 +313,13 @@ export default function HomePage() {
             </p>
             <p className="mt-1 text-sm text-gray-400">
               Videos: MP4, MOV, AVI, MXF, M4V, WMV &nbsp;|&nbsp; Images: JPG,
-              PNG, TIFF
+              PNG, TIFF, RAW (CR2, NEF, ARW)
             </p>
             <input
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".mp4,.mov,.avi,.mxf,.m4v,.wmv,.jpg,.jpeg,.png,.tiff,.tif"
+              accept=".mp4,.mov,.avi,.mxf,.m4v,.wmv,.jpg,.jpeg,.png,.tiff,.tif,.cr2,.nef,.arw"
               onChange={(e) =>
                 handleFileSelect(e.target.files?.[0] || null)
               }

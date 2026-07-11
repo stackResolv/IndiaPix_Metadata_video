@@ -19,7 +19,7 @@ from services.batch_service import (
     Batch,
 )
 from services.csv_service import export_batch_csv
-from services.storage_service import find_upload_file
+from services.storage_service import find_upload_file, clear_upload
 
 logger = logging.getLogger(__name__)
 
@@ -203,3 +203,29 @@ async def batch_retry_failed(batch_id: str):
     asyncio.create_task(start_batch_processing(batch_id))
 
     return batch.to_dict()
+
+@router.post("/cleanup/{batch_id}")
+async def batch_cleanup(batch_id: str):
+    """
+    Clean up all uploaded files associated with a batch.
+    
+    Args:
+        batch_id: The batch ID to clean up files for.
+    
+    Returns:
+        Dict with count of cleaned files.
+    """
+    batch = await get_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail=f"Batch {batch_id} not found")
+
+    cleaned = 0
+    for job in batch.jobs:
+        try:
+            clear_upload(job.upload_id)
+            cleaned += 1
+        except Exception as e:
+            logger.warning(f"Cleanup failed for upload {job.upload_id}: {e}")
+
+    logger.info(f"Cleaned up {cleaned} upload(s) for batch {batch_id}")
+    return {"batch_id": batch_id, "cleaned_count": cleaned}

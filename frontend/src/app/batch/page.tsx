@@ -133,6 +133,7 @@ export default function BatchPage() {
     const validExtensions = [
       ".mp4", ".mov", ".avi", ".mxf", ".m4v", ".wmv",
       ".jpg", ".jpeg", ".png", ".tiff", ".tif",
+      ".cr2", ".nef", ".arw",
     ];
 
     const newItems: QueueItem[] = [];
@@ -371,7 +372,7 @@ export default function BatchPage() {
               Drag & drop files or a folder here
             </p>
             <p className="mt-1 text-sm text-gray-400">
-              Videos: MP4, MOV, AVI, MXF, M4V, WMV &nbsp;|&nbsp; Images: JPG, PNG, TIFF
+              Videos: MP4, MOV, AVI, MXF, M4V, WMV &nbsp;|&nbsp; Images: JPG, PNG, TIFF, RAW (CR2, NEF, ARW)
             </p>
 
             <div className="mt-5 flex items-center justify-center gap-3">
@@ -397,7 +398,7 @@ export default function BatchPage() {
             type="file"
             className="hidden"
             multiple
-            accept=".mp4,.mov,.avi,.mxf,.m4v,.wmv,.jpg,.jpeg,.png,.tiff,.tif"
+            accept=".mp4,.mov,.avi,.mxf,.m4v,.wmv,.jpg,.jpeg,.png,.tiff,.tif,.cr2,.nef,.arw"
             onChange={(e) => handleFilesSelected(e.target.files)}
           />
 

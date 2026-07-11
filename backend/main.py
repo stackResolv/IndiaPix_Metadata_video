@@ -3,6 +3,7 @@ IndiaPix Metadata Automation System — FastAPI Application Entry Point
 Powered by Claude AI (Anthropic) | IndiaPix Visual Media Pvt. Ltd.
 """
 
+import asyncio
 import json
 import logging
 import logging.handlers
@@ -188,6 +189,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"Claude model: {settings.claude_model}")
     logger.info(f"Allowed video formats: {', '.join(sorted(settings.allowed_video_extensions))}")
     logger.info(f"Max upload size: {settings.max_upload_size_mb}MB")
+    logger.info(f"Stale upload TTL: {settings.upload_ttl_hours}h")
+    logger.info(f"Allowed image formats: {', '.join(sorted(settings.allowed_image_extensions))}")
 
     # Verify FFmpeg is available
     _check_ffmpeg()
@@ -198,7 +201,37 @@ async def lifespan(app: FastAPI):
     # Ensure upload directory exists
     settings.upload_path.mkdir(parents=True, exist_ok=True)
 
+    # Run initial stale upload cleanup on startup
+    from services.storage_service import cleanup_stale_uploads
+    try:
+        cleaned = cleanup_stale_uploads()
+        if cleaned > 0:
+            logger.info(f"Cleaned up {cleaned} stale upload(s) from previous session")
+    except Exception as e:
+        logger.warning(f"Startup stale upload cleanup failed: {e}")
+
+    # Background task: periodic stale upload cleanup every 15 minutes
+    async def _stale_cleanup_loop():
+        while True:
+            await asyncio.sleep(900)  # 15 minutes
+            try:
+                from services.storage_service import cleanup_stale_uploads
+                cleaned = await asyncio.to_thread(cleanup_stale_uploads)
+                if cleaned > 0:
+                    logger.info(f"Background cleanup removed {cleaned} stale upload(s)")
+            except Exception as e:
+                logger.warning(f"Background stale upload cleanup failed: {e}")
+
+    cleanup_task = asyncio.create_task(_stale_cleanup_loop())
+
     yield
+
+    # Cancel the background task on shutdown
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
 
     logger.info("IndiaPix Metadata Automation System shutting down.")
 
