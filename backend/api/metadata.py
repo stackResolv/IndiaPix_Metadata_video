@@ -27,6 +27,7 @@ from services.storage_service import (
     get_original_filename,
     clear_upload,
 )
+from db.job_repository import save_job
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +196,21 @@ async def generate_metadata_endpoint(
         # Write single-file CSV to disk immediately
         _write_single_csv(original_filename, metadata, video_properties if is_video else None)
 
+        # Save to job history database
+        try:
+            await save_job(
+                filename=original_filename,
+                upload_id=upload_id,
+                status="completed",
+                metadata=metadata,
+                video_properties=video_properties if is_video else None,
+                provider=ai_provider,
+                frames_extracted=len(frame_paths),
+                duration_seconds=round(duration, 1) if is_video else None,
+            )
+        except Exception as db_err:
+            logger.warning(f"Failed to save job {original_filename} to DB: {db_err}")
+
         return {
             "job_id": job_id,
             "filename": original_filename,
@@ -207,14 +223,17 @@ async def generate_metadata_endpoint(
 
     except ClaudeAPIError as e:
         logger.error(f"Claude API error: {e}")
+        await _save_failed_job(original_filename, upload_id, ai_provider, str(e))
         raise HTTPException(status_code=502, detail=str(e))
     except OpenAIAPIError as e:
         logger.error(f"OpenAI API error: {e}")
+        await _save_failed_job(original_filename, upload_id, ai_provider, str(e))
         raise HTTPException(status_code=502, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Metadata generation failed: {e}", exc_info=True)
+        await _save_failed_job(original_filename, upload_id, ai_provider, str(e))
         raise HTTPException(
             status_code=500,
             detail=f"Failed to generate metadata: {str(e)}",
@@ -260,3 +279,17 @@ def _cleanup_dir(dir_path: Path):
             logger.debug(f"Cleaned up directory: {dir_path}")
     except Exception as e:
         logger.warning(f"Failed to clean up directory {dir_path}: {e}")
+
+
+async def _save_failed_job(filename: str, upload_id: str, provider: str, error_message: str):
+    """Save a failed job to the database."""
+    try:
+        await save_job(
+            filename=filename,
+            upload_id=upload_id,
+            status="failed",
+            provider=provider,
+            error_message=error_message,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to save failed job {filename} to DB: {e}")

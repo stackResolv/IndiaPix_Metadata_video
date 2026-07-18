@@ -210,6 +210,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Startup stale upload cleanup failed: {e}")
 
+    # Initialize database and seed default data
+    try:
+        from db.database import init_database
+        init_database()
+        logger.info("Database initialised successfully.")
+    except Exception as e:
+        logger.warning(f"Database initialisation failed: {e}")
+
+    # Initialize default settings and keywords
+    try:
+        from services.settings_service import init_default_settings
+        from services.custom_keywords import init_default_keywords
+        await init_default_settings()
+        await init_default_keywords()
+        logger.info("Default settings and keywords initialised.")
+    except Exception as e:
+        logger.warning(f"Failed to initialise defaults: {e}")
+
     # Background task: periodic stale upload cleanup every 15 minutes
     async def _stale_cleanup_loop():
         while True:
@@ -320,11 +338,19 @@ from api.upload import router as upload_router
 from api.metadata import router as metadata_router
 from api.export import router as export_router
 from api.batch import router as batch_router
+from api.history import router as history_router
+from api.analytics import router as analytics_router
+from api.settings import router as settings_router
+from api.keywords import router as keywords_router
 
 app.include_router(upload_router)
 app.include_router(metadata_router)
 app.include_router(export_router)
 app.include_router(batch_router)
+app.include_router(history_router)
+app.include_router(analytics_router)
+app.include_router(settings_router)
+app.include_router(keywords_router)
 
 
 # Health check endpoint

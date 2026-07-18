@@ -23,6 +23,7 @@ build/
 backend/temp_uploads/
 backend/processed_results/
 backend/logs/
+backend/data/
 
 # IDE
 .vscode/

@@ -64,3 +64,64 @@ export type ProcessState =
   | "processing"
   | "complete"
   | "error";
+
+// ── Phase 3 Types ───────────────────────────────────────────────────────────
+
+export interface JobHistoryRecord {
+  id: number;
+  filename: string;
+  upload_id: string;
+  batch_id?: string | null;
+  status: "completed" | "failed";
+  metadata?: MetadataResult | null;
+  video_properties?: VideoProperties | null;
+  provider: string;
+  frames_extracted: number;
+  duration_seconds?: number | null;
+  error_message?: string | null;
+  created_at: string;
+}
+
+export interface JobHistorySearchResult {
+  results: JobHistoryRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AnalyticsSummary {
+  total: number;
+  completed: number;
+  failed: number;
+  total_frames: number;
+}
+
+export interface AnalyticsAllResponse {
+  summary: {
+    all: AnalyticsSummary;
+    today: AnalyticsSummary;
+    week: AnalyticsSummary;
+    month: AnalyticsSummary;
+  };
+  daily: { date: string; total: number; completed: number; failed: number }[];
+  top_categories: { name: string; count: number }[];
+  top_locations: { name: string; count: number }[];
+}
+
+export interface CustomKeyword {
+  id: number;
+  keyword: string;
+  category: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AppSettings {
+  [key: string]: string;
+}
+
+export interface PlatformPreset {
+  id: string;
+  name: string;
+  columns: string[];
+}

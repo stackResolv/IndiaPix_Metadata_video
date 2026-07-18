@@ -20,6 +20,7 @@ from services.batch_service import (
 )
 from services.csv_service import export_batch_csv
 from services.storage_service import find_upload_file, clear_upload
+from services.settings_service import get_setting
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +52,10 @@ async def batch_start(request: Request):
     if not upload_ids:
         raise HTTPException(status_code=400, detail="upload_ids list is required and cannot be empty")
     
-    if len(upload_ids) > 50:
-        raise HTTPException(status_code=400, detail="Maximum 50 files per batch")
+    raw = await get_setting("max_batch_size")
+    max_batch = int(raw) if raw and raw.strip() not in ("", "0") else 0
+    if max_batch > 0 and len(upload_ids) > max_batch:
+        raise HTTPException(status_code=400, detail=f"Maximum {max_batch} files per batch")
 
     descriptions = body.get("descriptions", {})
     provider = body.get("provider", "")

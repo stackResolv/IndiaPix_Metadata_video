@@ -1,7 +1,15 @@
 // IndiaPix Metadata Automation System — API Client
 // Communicates with the FastAPI backend
 
-import type { VideoProperties } from "@/types/metadata";
+import type {
+  VideoProperties,
+  JobHistorySearchResult,
+  JobHistoryRecord,
+  AnalyticsAllResponse,
+  CustomKeyword,
+  AppSettings,
+  PlatformPreset,
+} from "@/types/metadata";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const DEFAULT_TIMEOUT_MS = 120_000; // 120 seconds for metadata generation
@@ -365,4 +373,160 @@ export async function batchRetryFailed(
 
 export async function checkHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/api/health");
+}
+
+// ── Job History (Phase 3) ─────────────────────────────────────────────────
+
+export async function searchJobHistory(params: {
+  query?: string;
+  status?: string;
+  date_from?: string;
+  date_to?: string;
+  batch_id?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<JobHistorySearchResult> {
+  const searchParams = new URLSearchParams();
+  if (params.query) searchParams.set("query", params.query);
+  if (params.status) searchParams.set("status", params.status);
+  if (params.date_from) searchParams.set("date_from", params.date_from);
+  if (params.date_to) searchParams.set("date_to", params.date_to);
+  if (params.batch_id) searchParams.set("batch_id", params.batch_id);
+  if (params.limit) searchParams.set("limit", String(params.limit));
+  if (params.offset) searchParams.set("offset", String(params.offset));
+  return request<JobHistorySearchResult>(`/api/history/search?${searchParams.toString()}`);
+}
+
+export async function getJobHistoryItem(jobId: number): Promise<JobHistoryRecord> {
+  return request<JobHistoryRecord>(`/api/history/${jobId}`);
+}
+
+export async function deleteJobHistoryItem(jobId: number): Promise<void> {
+  return request<void>(`/api/history/${jobId}`, { method: "DELETE" });
+}
+
+export async function exportJobHistoryCsv(jobId: number, platform: string = "getty"): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/api/history/export/${jobId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ platform }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    let detail = `Export failed: ${response.statusText}`;
+    try { const parsed = JSON.parse(errorBody); if (parsed.detail) detail = parsed.detail; } catch {}
+    throw new Error(detail);
+  }
+  return response.blob();
+}
+
+export async function exportBatchHistoryCsv(jobIds: number[], platform: string = "getty"): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/api/history/export-batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_ids: jobIds, platform }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    let detail = `Batch export failed: ${response.statusText}`;
+    try { const parsed = JSON.parse(errorBody); if (parsed.detail) detail = parsed.detail; } catch {}
+    throw new Error(detail);
+  }
+  return response.blob();
+}
+
+export async function listPlatforms(): Promise<{ platforms: PlatformPreset[] }> {
+  return request<{ platforms: PlatformPreset[] }>("/api/history/platforms/list");
+}
+
+// ── Analytics (Phase 3) ──────────────────────────────────────────────────
+
+export async function getAnalyticsAll(
+  days: number = 30,
+  categoryLimit: number = 10,
+  locationLimit: number = 10,
+): Promise<AnalyticsAllResponse> {
+  const params = new URLSearchParams();
+  params.set("days", String(days));
+  params.set("category_limit", String(categoryLimit));
+  params.set("location_limit", String(locationLimit));
+  return request<AnalyticsAllResponse>(`/api/analytics/all?${params.toString()}`);
+}
+
+export async function getAnalyticsSummary(period: string = "all"): Promise<{ total: number; completed: number; failed: number; total_frames: number }> {
+  return request(`/api/analytics/summary?period=${period}`);
+}
+
+export async function getAnalyticsDaily(days: number = 30): Promise<{ days: number; data: { date: string; total: number; completed: number; failed: number }[] }> {
+  return request(`/api/analytics/daily?days=${days}`);
+}
+
+export async function getTopCategories(limit: number = 10): Promise<{ categories: { name: string; count: number }[] }> {
+  return request(`/api/analytics/categories?limit=${limit}`);
+}
+
+export async function getTopLocations(limit: number = 10): Promise<{ locations: { name: string; count: number }[] }> {
+  return request(`/api/analytics/locations?limit=${limit}`);
+}
+
+// ── Settings (Phase 3) ───────────────────────────────────────────────────
+
+export async function getAllSettings(): Promise<AppSettings> {
+  return request<AppSettings>("/api/settings/");
+}
+
+export async function updateSettings(updates: Record<string, string>): Promise<AppSettings> {
+  return request<AppSettings>("/api/settings/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function getApiKeyStatus(): Promise<{
+  claude: boolean;
+  openai: boolean;
+  claude_configured: boolean;
+  openai_configured: boolean;
+  claude_db_override: boolean;
+  openai_db_override: boolean;
+}> {
+  return request("/api/settings/keys/status");
+}
+
+export async function updateSetting(key: string, value: string): Promise<{ key: string; value: string }> {
+  return request(`/api/settings/${key}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value }),
+  });
+}
+
+// ── Custom Keywords (Phase 3) ────────────────────────────────────────────
+
+export async function getCustomKeywords(activeOnly: boolean = true): Promise<{ keywords: CustomKeyword[]; total: number }> {
+  return request(`/api/keywords/?active_only=${activeOnly}`);
+}
+
+export async function addCustomKeyword(keyword: string, category: string = "general"): Promise<CustomKeyword> {
+  return request("/api/keywords/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ keyword, category }),
+  });
+}
+
+export async function updateCustomKeyword(
+  keywordId: number,
+  updates: { keyword?: string; category?: string; is_active?: boolean }
+): Promise<void> {
+  return request(`/api/keywords/${keywordId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteCustomKeyword(keywordId: number): Promise<void> {
+  return request(`/api/keywords/${keywordId}`, { method: "DELETE" });
 }

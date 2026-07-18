@@ -29,6 +29,7 @@ from services.claude_service import generate_metadata as claude_generate, Claude
 from services.openai_service import generate_metadata as openai_generate, OpenAIAPIError
 from services.csv_service import generate_csv_row, CSV_COLUMNS
 from services.storage_service import find_upload_file, get_original_filename, clear_upload
+from db.job_repository import save_job
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,22 @@ async def start_batch_processing(batch_id: str):
             # Append this job's row to the batch CSV on disk
             _append_job_to_csv(batch.csv_path, job)
 
+            # Save to job history database
+            try:
+                await save_job(
+                    filename=job.filename,
+                    upload_id=job.upload_id,
+                    status="completed",
+                    batch_id=batch_id,
+                    metadata=job.metadata,
+                    video_properties=job.video_properties,
+                    provider=job.provider,
+                    frames_extracted=job.frames_extracted,
+                    duration_seconds=job.duration_seconds,
+                )
+            except Exception as db_err:
+                logger.warning(f"Failed to save job {job.filename} to DB: {db_err}")
+
             logger.info(f"Job completed: {job.filename} in batch {batch_id}")
         except Exception as e:
             job.status = JobStatus.FAILED
@@ -225,6 +242,19 @@ async def start_batch_processing(batch_id: str):
             async with _batch_lock:
                 batch.failed_count += 1
             logger.error(f"Job failed: {job.filename} in batch {batch_id}: {e}")
+
+            # Save failed job to database
+            try:
+                await save_job(
+                    filename=job.filename,
+                    upload_id=job.upload_id,
+                    status="failed",
+                    batch_id=batch_id,
+                    error_message=str(e),
+                    provider=job.provider,
+                )
+            except Exception as db_err:
+                logger.warning(f"Failed to save failed job {job.filename} to DB: {db_err}")
 
         await asyncio.sleep(0)
 
